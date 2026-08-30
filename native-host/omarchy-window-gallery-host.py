@@ -24,8 +24,21 @@ RUNTIME_DIR = os.path.join(
     "omarchy-window-gallery",
 )
 TABS_PATH = os.path.join(RUNTIME_DIR, "tabs.json")
-SOCKET_PATH = os.path.join(RUNTIME_DIR, "control.sock")
 THUMB_DIR = os.path.join(RUNTIME_DIR, "thumbs")
+
+
+# AF_UNIX paths are capped near 107 bytes, and exceeding it raises at bind()
+# rather than anywhere obvious. An unusual XDG_RUNTIME_DIR is enough to trip
+# it, so fall back to a short path instead. Both the host and the --activate
+# client compute this the same way, so they always agree.
+def _socket_path():
+    preferred = os.path.join(RUNTIME_DIR, "control.sock")
+    if len(preferred.encode("utf-8")) <= 100:
+        return preferred
+    return f"/tmp/omarchy-window-gallery-{os.getuid()}.sock"
+
+
+SOCKET_PATH = _socket_path()
 
 # One writer (this process) and many readers, so the file is replaced by
 # rename rather than truncated in place: a reader either sees the whole old
@@ -80,6 +93,16 @@ def send_message(message):
 
 
 def serve_control_socket():
+    try:
+        _serve_control_socket()
+    except OSError as error:
+        # No control socket means tabs cannot be activated, but the tab list
+        # still works. Say so once on stderr rather than dying in a thread.
+        print(f"omarchy-window-gallery: control socket unavailable: {error}",
+              file=sys.stderr, flush=True)
+
+
+def _serve_control_socket():
     os.makedirs(RUNTIME_DIR, exist_ok=True)
     try:
         os.unlink(SOCKET_PATH)
