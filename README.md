@@ -48,8 +48,14 @@ Windows are ordered most-recently-used, so the first tile is always the window
 you were just in — `ALT + TAB`, `Enter` is "go back". The current window is
 left out, since switching to it does nothing.
 
-Tiles are badged  when fullscreen and  when the app is playing media, in
-which case the track title replaces the workspace label.
+Media players and fullscreen windows are grouped under their own headings,
+above the main list; everything else stays in one most-recently-used group.
+Headings only appear when there is more than one group, so the common case
+stays a plain grid. Tiles are also badged — fullscreen and playing — and a
+playing tile shows its track title in place of the workspace label.
+
+Whatever the grouping, the selection starts on your most recently used window,
+so "open, Enter" is always "go back".
 
 ## How it works
 

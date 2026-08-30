@@ -1,4 +1,5 @@
 import Quickshell
+import Quickshell.Io
 import Quickshell.Wayland
 import Quickshell.Hyprland
 import Quickshell.Services.Mpris
@@ -77,7 +78,25 @@ Item {
     var n = Math.max(1, filtered.length)
     return Math.max(1, Math.min(n, maxColumns, Math.max(1, fits)))
   }
-  readonly property int gridRows: Math.max(1, Math.ceil(Math.max(1, filtered.length) / columns))
+
+  readonly property int groupHeaderHeight: Style.font.bodySmall + Style.spacing.md
+  readonly property int groupGap: Style.spacing.lg
+
+  // Group spans for `filtered`, set alongside it in applyFilter().
+  property var groups: []
+
+  // Absolute placement for tiles and headers. The selection ring reads the
+  // same arithmetic, so it cannot drift from the tiles it highlights.
+  readonly property var layout: WindowList.layoutGroups(
+    { rows: filtered, groups: groups }, columns, tileWidth, tileHeight,
+    groupHeaderHeight, groupGap)
+
+  readonly property var selectedTile: {
+    var tiles = layout.tiles
+    for (var i = 0; i < tiles.length; i++)
+      if (tiles[i].index === selectedIndex) return tiles[i]
+    return null
+  }
 
   // The screen the gallery should appear on: whichever monitor has focus.
   readonly property var targetScreen: {
@@ -94,8 +113,9 @@ Item {
   function open(payloadJson) {
     root.filterText = ""
     root.committing = false
+    // The cached toplevel list drifts: it accumulates helper surfaces that
+    // Hyprland never describes, so ask for an authoritative one on every open.
     root.rebuild()
-    root.selectedIndex = 0
     root.mounted = true
     root.opened = true
     Qt.callLater(function () { keyCatcher.forceActiveFocus() })
@@ -140,14 +160,51 @@ Item {
 
   // ----------------------------------------------------------------- model
 
+  // Asks Hyprland for its client list; rebuildFrom() runs when it answers.
   function rebuild() {
+    Hyprland.refreshToplevels()
+    clientsProcess.running = true
+  }
+
+  function rebuildFrom(clientsJson) {
+    var clients = []
+    try {
+      clients = JSON.parse(clientsJson)
+    } catch (e) {
+      console.warn("window-gallery: could not parse hyprctl clients output:", e)
+      return
+    }
+    if (!Array.isArray(clients)) return
+
+    // The Wayland toplevel is only needed for its capture handle, so the
+    // cached list is fine here -- a missing entry costs a preview, not a row.
+    var waylandByAddress = ({})
+    var toplevels = Hyprland.toplevels ? Hyprland.toplevels.values : []
+    for (var i = 0; i < toplevels.length; i++) {
+      var tl = toplevels[i]
+      if (tl && tl.wayland)
+        waylandByAddress[WindowList.normalizeAddress(tl.address)] = tl.wayland
+    }
+
     var players = Mpris.players ? Mpris.players.values : []
-    root.allRows = WindowList.buildRows(Hyprland.toplevels ? Hyprland.toplevels.values : [], players)
+    root.allRows = WindowList.buildRows(clients, waylandByAddress, players)
     root.applyFilter()
+    root.selectedIndex = WindowList.mostRecentIndex(root.filtered)
+  }
+
+  Process {
+    id: clientsProcess
+    command: ["hyprctl", "clients", "-j"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.rebuildFrom(text)
+    }
   }
 
   function applyFilter() {
-    root.filtered = WindowList.filterRows(root.allRows, root.filterText)
+    var grouped = WindowList.groupRows(WindowList.filterRows(root.allRows, root.filterText))
+    root.filtered = grouped.rows
+    root.groups = grouped.groups
     if (root.filtered.length === 0) root.selectedIndex = 0
     else if (root.selectedIndex >= root.filtered.length) root.selectedIndex = root.filtered.length - 1
     else if (root.selectedIndex < 0) root.selectedIndex = 0
@@ -158,6 +215,18 @@ Item {
     root.selectedIndex = 0
     root.applyFilter()
   }
+
+  // Keep the selection on screen when it moves past the visible rows.
+  function ensureVisible() {
+    var tile = root.selectedTile
+    if (!tile || !flick) return
+    if (tile.y < flick.contentY)
+      flick.contentY = tile.y
+    else if (tile.y + root.tileHeight > flick.contentY + flick.height)
+      flick.contentY = tile.y + root.tileHeight - flick.height
+  }
+
+  onSelectedIndexChanged: Qt.callLater(root.ensureVisible)
 
   function select(delta) {
     var n = root.filtered.length
@@ -216,15 +285,18 @@ Item {
     var activeWs = monitor && monitor.activeWorkspace ? monitor.activeWorkspace.id : -1
     var onScreenNow = row.workspaceId === activeWs && row.at && row.size
 
-    var item = grid.itemAtIndex(index)
-    if (!item) return
+    var tile = null
+    for (var i = 0; i < root.layout.tiles.length; i++)
+      if (root.layout.tiles[i].index === index) tile = root.layout.tiles[i]
+    if (!tile) return
 
-    var origin = item.mapToItem(panelContent, 0, 0)
+    var inset = Style.spacing.sm
+    var origin = gridContent.mapToItem(panelContent, tile.x + inset, tile.y + inset)
     flight.row = row
     flight.x = origin.x
     flight.y = origin.y
-    flight.width = item.width
-    flight.height = root.previewHeight
+    flight.width = root.tileWidth - inset * 2
+    flight.height = root.previewHeight - inset * 2
     flight.opacity = 1
     flight.visible = true
 
@@ -298,7 +370,7 @@ Item {
 
         width: Math.min(root.maxCardWidth, root.cardInsetX + root.columns * root.tileWidth)
         height: Math.min(root.maxCardHeight,
-          root.cardInsetY + root.headerHeight + root.contentSpacing + root.gridRows * root.tileHeight)
+          root.cardInsetY + root.headerHeight + root.contentSpacing + Math.max(root.tileHeight, root.layout.height))
         anchors.centerIn: parent
         radius: root.cornerRadius
         color: root.background
@@ -397,151 +469,188 @@ Item {
             width: parent.width
             height: parent.height - root.headerHeight - root.contentSpacing
 
-            GridView {
-              id: grid
+            Flickable {
+              id: flick
               anchors.fill: parent
-              model: root.filtered
               clip: true
-              cellWidth: root.tileWidth
-              cellHeight: root.tileHeight
+              contentWidth: gridContent.width
+              contentHeight: gridContent.height
               boundsBehavior: Flickable.StopAtBounds
-              currentIndex: root.selectedIndex
-              highlightFollowsCurrentItem: true
-              highlightMoveDuration: 140
-              onCurrentIndexChanged: positionViewAtIndex(currentIndex, GridView.Contain)
+              visible: root.filtered.length > 0
 
-              // A single highlight rectangle slides between cells instead of
-              // every tile animating itself.
-              highlight: Rectangle {
-                radius: root.cornerRadius
-                color: root.selectedBackground
-                border.width: Math.max(1, Style.space(2))
-                border.color: root.selectedText
-              }
+              Item {
+                id: gridContent
+                width: root.columns * root.tileWidth
+                height: root.layout.height
 
-              delegate: Item {
-                id: tile
-                required property var modelData
-                required property int index
+                // One ring slides between tiles rather than every tile
+                // animating itself: cheaper, and calmer to look at.
+                Rectangle {
+                  id: ring
+                  visible: root.selectedTile !== null
+                  x: (root.selectedTile ? root.selectedTile.x : 0) + Style.spacing.xs
+                  y: (root.selectedTile ? root.selectedTile.y : 0) + Style.spacing.xs
+                  width: root.tileWidth - Style.spacing.xs * 2
+                  height: root.tileHeight - Style.spacing.xs * 2
+                  radius: root.cornerRadius
+                  color: root.selectedBackground
+                  border.width: Math.max(1, Style.space(2))
+                  border.color: root.selectedText
 
-                width: root.tileWidth
-                height: root.tileHeight
+                  Behavior on x { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+                  Behavior on y { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+                }
 
-                readonly property bool isSelected: index === root.selectedIndex
+                Repeater {
+                  model: root.layout.headers
 
-                scale: isSelected || hoverArea.containsMouse ? 1.03 : 1.0
-                Behavior on scale { NumberAnimation { duration: 130; easing.type: Easing.OutCubic } }
-
-                Item {
-                  anchors.fill: parent
-                  anchors.margins: Style.spacing.sm
-
-                  Rectangle {
-                    id: previewFrame
-                    width: parent.width
-                    height: root.previewHeight - Style.spacing.sm * 2
-                    radius: root.cornerRadius
-                    color: Qt.rgba(0, 0, 0, 0.22)
-                    clip: true
-
-                    ScreencopyView {
-                      id: preview
-                      anchors.fill: parent
-                      // Bound to `mounted`, so every capture is released when
-                      // the gallery closes and nothing is held while idle.
-                      captureSource: root.mounted ? tile.modelData.wayland : null
-                      live: false
-                      paintCursor: false
-                      opacity: hasContent ? 1 : 0
-                      Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
-                    }
-
-                    // Shown until the frame lands, so a tile is never blank.
-                    Text {
-                      anchors.centerIn: parent
-                      visible: !preview.hasContent
-                      text: tile.modelData.glyph
-                      color: root.foreground
-                      opacity: 0.35
-                      font.family: root.fontFamily
-                      font.pixelSize: Style.font.displayLarge
-                    }
-
-                    Row {
-                      anchors.top: parent.top
-                      anchors.right: parent.right
-                      anchors.margins: Style.spacing.sm
-                      spacing: Style.spacing.xs
-
-                      Text {
-                        visible: tile.modelData.fullscreen
-                        text: "\uf065"
-                        color: root.selectedText
-                        font.family: root.fontFamily
-                        font.pixelSize: Style.font.iconSmall
-                      }
-
-                      Text {
-                        visible: tile.modelData.playing
-                        text: "\uf04b"
-                        color: root.selectedText
-                        font.family: root.fontFamily
-                        font.pixelSize: Style.font.iconSmall
-                      }
-                    }
-                  }
-
-                  Row {
-                    anchors.top: previewFrame.bottom
-                    anchors.topMargin: Style.spacing.sm
-                    width: parent.width
-                    spacing: Style.spacing.sm
-
-                    Text {
-                      text: tile.modelData.glyph
-                      color: root.foreground
-                      opacity: 0.75
-                      font.family: root.fontFamily
-                      font.pixelSize: Style.font.body
-                    }
-
-                    Column {
-                      width: parent.width - Style.font.body - Style.spacing.sm
-                      spacing: 0
-
-                      Text {
-                        width: parent.width
-                        text: tile.modelData.title
-                        color: tile.isSelected ? root.selectedText : root.foreground
-                        font.family: root.fontFamily
-                        font.pixelSize: Style.font.bodySmall
-                        elide: Text.ElideRight
-                      }
-
-                      Text {
-                        width: parent.width
-                        text: tile.modelData.playing && tile.modelData.trackTitle
-                          ? tile.modelData.trackTitle
-                          : (tile.modelData.workspaceName ? "Workspace " + tile.modelData.workspaceName : "")
-                        color: root.foreground
-                        opacity: 0.45
-                        font.family: root.fontFamily
-                        font.pixelSize: Style.font.caption
-                        elide: Text.ElideRight
-                      }
-                    }
+                  Text {
+                    required property var modelData
+                    x: Style.spacing.sm
+                    y: modelData.y
+                    height: root.groupHeaderHeight
+                    verticalAlignment: Text.AlignVCenter
+                    text: modelData.title.toUpperCase()
+                    color: root.foreground
+                    opacity: 0.45
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.caption
+                    font.letterSpacing: 1
                   }
                 }
 
-                MouseArea {
-                  id: hoverArea
-                  anchors.fill: parent
-                  hoverEnabled: true
-                  cursorShape: Qt.PointingHandCursor
-                  onContainsMouseChanged: if (containsMouse) root.selectedIndex = tile.index
-                  onClicked: {
-                    root.selectedIndex = tile.index
-                    root.activateIndex(tile.index)
+                Repeater {
+                  model: root.layout.tiles
+
+                  Item {
+                    id: tile
+                    required property var modelData
+
+                    readonly property var row: root.filtered[modelData.index] || null
+                    readonly property bool isSelected: modelData.index === root.selectedIndex
+
+                    x: modelData.x
+                    y: modelData.y
+                    width: root.tileWidth
+                    height: root.tileHeight
+                    visible: row !== null
+
+                    scale: isSelected || hoverArea.containsMouse ? 1.03 : 1.0
+                    Behavior on scale { NumberAnimation { duration: 130; easing.type: Easing.OutCubic } }
+
+                    Item {
+                      anchors.fill: parent
+                      anchors.margins: Style.spacing.sm
+
+                      Rectangle {
+                        id: previewFrame
+                        width: parent.width
+                        height: root.previewHeight - Style.spacing.sm * 2
+                        radius: root.cornerRadius
+                        color: Qt.rgba(0, 0, 0, 0.22)
+                        clip: true
+
+                        ScreencopyView {
+                          id: preview
+                          anchors.fill: parent
+                          // Bound to `mounted`, so captures are released on
+                          // close and nothing is held while idle.
+                          captureSource: root.mounted && tile.row ? tile.row.wayland : null
+                          live: false
+                          paintCursor: false
+                          opacity: hasContent ? 1 : 0
+                          Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                        }
+
+                        // Shown until the frame lands, so a tile is never blank.
+                        Text {
+                          anchors.centerIn: parent
+                          visible: !preview.hasContent
+                          text: tile.row ? tile.row.glyph : ""
+                          color: root.foreground
+                          opacity: 0.35
+                          font.family: root.fontFamily
+                          font.pixelSize: Style.font.displayLarge
+                        }
+
+                        Row {
+                          anchors.top: parent.top
+                          anchors.right: parent.right
+                          anchors.margins: Style.spacing.sm
+                          spacing: Style.spacing.xs
+
+                          Text {
+                            visible: tile.row ? tile.row.fullscreen : false
+                            text: "\uf065"
+                            color: root.selectedText
+                            font.family: root.fontFamily
+                            font.pixelSize: Style.font.iconSmall
+                          }
+
+                          Text {
+                            visible: tile.row ? tile.row.playing : false
+                            text: "\uf04b"
+                            color: root.selectedText
+                            font.family: root.fontFamily
+                            font.pixelSize: Style.font.iconSmall
+                          }
+                        }
+                      }
+
+                      Row {
+                        anchors.top: previewFrame.bottom
+                        anchors.topMargin: Style.spacing.sm
+                        width: parent.width
+                        spacing: Style.spacing.sm
+
+                        Text {
+                          text: tile.row ? tile.row.glyph : ""
+                          color: root.foreground
+                          opacity: 0.75
+                          font.family: root.fontFamily
+                          font.pixelSize: Style.font.body
+                        }
+
+                        Column {
+                          width: parent.width - Style.font.body - Style.spacing.sm
+                          spacing: 0
+
+                          Text {
+                            width: parent.width
+                            text: tile.row ? tile.row.title : ""
+                            color: tile.isSelected ? root.selectedText : root.foreground
+                            font.family: root.fontFamily
+                            font.pixelSize: Style.font.bodySmall
+                            elide: Text.ElideRight
+                          }
+
+                          Text {
+                            width: parent.width
+                            text: !tile.row ? ""
+                              : (tile.row.playing && tile.row.trackTitle
+                                ? tile.row.trackTitle
+                                : (tile.row.workspaceName ? "Workspace " + tile.row.workspaceName : ""))
+                            color: root.foreground
+                            opacity: 0.45
+                            font.family: root.fontFamily
+                            font.pixelSize: Style.font.caption
+                            elide: Text.ElideRight
+                          }
+                        }
+                      }
+                    }
+
+                    MouseArea {
+                      id: hoverArea
+                      anchors.fill: parent
+                      hoverEnabled: true
+                      cursorShape: Qt.PointingHandCursor
+                      onContainsMouseChanged: if (containsMouse) root.selectedIndex = tile.modelData.index
+                      onClicked: {
+                        root.selectedIndex = tile.modelData.index
+                        root.activateIndex(tile.modelData.index)
+                      }
+                    }
                   }
                 }
               }
@@ -563,7 +672,7 @@ Item {
               }
 
               Text {
-                text: root.filterText ? "No windows match “" + root.filterText + "”" : "No other windows"
+                text: root.filterText ? "No windows match \u201c" + root.filterText + "\u201d" : "No other windows"
                 color: root.foreground
                 opacity: 0.7
                 font.family: root.fontFamily

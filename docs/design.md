@@ -85,9 +85,29 @@ selected, so ALT+TAB → Enter is "go back", and the current window is omitted
 Filtering matches window title and app class, plus the keywords `playing` and
 `fullscreen` which select on badges.
 
-Ordering is strict MRU (`focusHistoryID` ascending), always. Fullscreen and
-now-playing appear as tile badges rather than as separate groups, so the
-first tile is reliably the last window.
+Ordering is MRU (`focusHistoryID` ascending) within each group. Media players
+and fullscreen windows are pulled into their own groups, shown above the main
+list; headers appear only when more than one group is non-empty. A window
+belongs to exactly one group, so nothing is listed twice.
+
+Grouping would normally break "the first tile is the last window", so the
+initial selection is the most-recently-used row *wherever grouping put it*
+rather than index 0. Badges are kept as well as groups, since a window can be
+fullscreen while grouped under Playing.
+
+### Where the window list comes from
+
+`hyprctl clients -j`, read fresh on every open -- not Quickshell's cached
+`Hyprland.toplevels`. The cache is wrong in two ways that both surfaced in
+use: it lags on `focusHistoryID`, so the focused window is not excluded and
+MRU order is stale; and it retains Wayland toplevels that Hyprland never
+describes -- Wine/Proton "Default IME" and "Input" surfaces, Electron helper
+shells -- which appeared as a dozen previewless tiles. Those have no
+`lastIpcObject` at all, which is why they rendered with the fallback glyph and
+no workspace label.
+
+The cached toplevel list is still used, but only to look up the Wayland handle
+for capture, keyed by address. A miss there costs a preview, not a row.
 
 ## Motion
 
