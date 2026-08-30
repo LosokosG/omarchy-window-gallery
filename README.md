@@ -91,6 +91,43 @@ own `Color.menu.*` and `Style.*` tokens, so the gallery matches the active
 Omarchy theme and restyles live when you switch themes. There are no hardcoded
 colours.
 
+## Browser tabs (optional)
+
+The gallery can list and focus Firefox tabs alongside windows, so a tab you
+cannot find is one search away. Firefox exposes no external way to activate a
+tab, so this needs a small extension and a native messaging host.
+
+```bash
+./native-host/install.sh          # registers the host with Firefox
+```
+
+Then load the extension in Firefox:
+
+1. Open `about:debugging#/runtime/this-firefox`
+2. **Load Temporary Add-on…**
+3. Pick `firefox-extension/manifest.json`
+
+Tabs appear under their own heading, ranked by how recently you visited them
+and always after your windows, so a window still wins the initial selection.
+The unfiltered view shows the six most recent (the heading says how many exist);
+searching lifts the cap, since that is when you are hunting for one. Search
+matches tab titles *and* URLs, and the term `tab` narrows to tabs only.
+
+Without the extension the gallery simply shows windows — nothing errors.
+
+> **Temporary vs permanent.** A temporary add-on is dropped when Firefox
+> restarts. Release Firefox only installs *signed* extensions permanently, so
+> to make it stick, sign the extension through
+> [addons.mozilla.org](https://addons.mozilla.org/developers/) (free, and
+> self-distribution is allowed — it does not have to be listed publicly):
+>
+> ```bash
+> npx web-ext sign --source-dir firefox-extension \
+>   --api-key "$AMO_JWT_ISSUER" --api-secret "$AMO_JWT_SECRET"
+> ```
+>
+> Install the resulting `.xpi` and it survives restarts.
+
 ## Caveats
 
 - Requires the Quickshell-based Omarchy shell — the plugin is an `overlay`
