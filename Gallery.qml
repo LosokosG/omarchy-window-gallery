@@ -39,6 +39,7 @@ Item {
   readonly property string runtimeDir:
     (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/omarchy-window-gallery"
   readonly property string tabsPath: runtimeDir + "/tabs.json"
+  readonly property string thumbDir: runtimeDir + "/thumbs"
 
   // manifest.__sourceDir is stamped in by the plugin registry; it may arrive
   // as a plain path or a file:// URL.
@@ -644,10 +645,29 @@ Item {
                           Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
                         }
 
-                        // Shown until the frame lands, so a tile is never blank.
+                        // Tabs cannot be captured live, so they show the
+                        // thumbnail taken when they were last on screen.
+                        // sourceSize caps decode resolution: the file is
+                        // ~500px wide but only a tile's worth is ever decoded.
+                        Image {
+                          id: tabThumb
+                          anchors.fill: parent
+                          visible: tile.row !== null && tile.row.source === "tab"
+                          source: root.mounted && tile.row && tile.row.source === "tab"
+                            ? "file://" + root.thumbDir + "/" + tile.row.tabId + ".jpg"
+                            : ""
+                          fillMode: Image.PreserveAspectCrop
+                          asynchronous: true
+                          cache: false
+                          sourceSize.width: root.tileWidth
+                          opacity: status === Image.Ready ? 1 : 0
+                          Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                        }
+
+                        // Shown until something lands, so a tile is never blank.
                         Text {
                           anchors.centerIn: parent
-                          visible: !preview.hasContent
+                          visible: !preview.hasContent && tabThumb.status !== Image.Ready
                           text: tile.row ? tile.row.glyph : ""
                           color: root.foreground
                           opacity: 0.35

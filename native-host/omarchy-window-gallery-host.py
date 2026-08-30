@@ -10,8 +10,10 @@ Run with --activate TABID WINDOWID to send one activation request to a
 already-running host; that is the mode the gallery itself invokes.
 """
 
+import base64
 import json
 import os
+import shutil
 import socket
 import struct
 import sys
@@ -23,6 +25,7 @@ RUNTIME_DIR = os.path.join(
 )
 TABS_PATH = os.path.join(RUNTIME_DIR, "tabs.json")
 SOCKET_PATH = os.path.join(RUNTIME_DIR, "control.sock")
+THUMB_DIR = os.path.join(RUNTIME_DIR, "thumbs")
 
 # One writer (this process) and many readers, so the file is replaced by
 # rename rather than truncated in place: a reader either sees the whole old
@@ -33,6 +36,25 @@ def write_tabs(tabs):
     with open(tmp, "w", encoding="utf-8") as handle:
         json.dump(tabs, handle)
     os.replace(tmp, TABS_PATH)
+
+
+# Thumbnails live under XDG_RUNTIME_DIR, which is tmpfs: they never touch the
+# disk and vanish on reboot. Written by rename for the same reason as the tab
+# list -- the gallery must never load a half-written image.
+def write_thumb(tab_id, encoded):
+    os.makedirs(THUMB_DIR, exist_ok=True)
+    path = os.path.join(THUMB_DIR, f"{int(tab_id)}.jpg")
+    tmp = path + f".{os.getpid()}.tmp"
+    with open(tmp, "wb") as handle:
+        handle.write(base64.b64decode(encoded))
+    os.replace(tmp, path)
+
+
+def drop_thumb(tab_id):
+    try:
+        os.unlink(os.path.join(THUMB_DIR, f"{int(tab_id)}.jpg"))
+    except (FileNotFoundError, ValueError):
+        pass
 
 
 def read_message():
@@ -77,6 +99,9 @@ def serve_control_socket():
         with conn:
             data = conn.recv(4096).decode("utf-8", "replace").strip()
         parts = data.split()
+        if parts and parts[0] == "reload":
+            send_message({"action": "reload"})
+            continue
         if len(parts) >= 2 and parts[0] == "activate":
             window_id = parts[2] if len(parts) > 2 else None
             send_message({
@@ -93,8 +118,16 @@ def run_host():
         message = read_message()
         if message is None:
             break
-        if message.get("action") == "tabs":
+        action = message.get("action")
+        if action == "tabs":
             write_tabs(message.get("tabs", []))
+        elif action == "thumb":
+            try:
+                write_thumb(message["tabId"], message["data"])
+            except (KeyError, ValueError, TypeError):
+                pass
+        elif action == "dropThumb":
+            drop_thumb(message.get("tabId"))
 
     # Firefox closed the port: leave no stale tab list behind, or the gallery
     # would keep offering tabs that can no longer be focused.
@@ -103,6 +136,18 @@ def run_host():
             os.unlink(path)
         except FileNotFoundError:
             pass
+    shutil.rmtree(THUMB_DIR, ignore_errors=True)
+
+
+def send_command(command):
+    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        client.connect(SOCKET_PATH)
+    except (FileNotFoundError, ConnectionRefusedError):
+        return 1
+    with client:
+        client.sendall(command.encode("utf-8"))
+    return 0
 
 
 def send_activation(tab_id, window_id):
@@ -117,6 +162,8 @@ def send_activation(tab_id, window_id):
 
 
 if __name__ == "__main__":
+    if len(sys.argv) >= 2 and sys.argv[1] == "--reload":
+        sys.exit(send_command("reload"))
     if len(sys.argv) >= 3 and sys.argv[1] == "--activate":
         sys.exit(send_activation(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else ""))
     run_host()
