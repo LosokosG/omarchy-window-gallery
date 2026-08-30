@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "Omarchy Window Gallery — Tabs",
+  "version": "1.0.0",
+  "description": "Publishes your open tabs to the Omarchy window gallery so they can be searched and focused alongside windows.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "window-gallery@losokos",
+      "strict_min_version": "115.0"
+    }
+  },
+  "permissions": ["tabs", "nativeMessaging"],
+  "background": {
+    "scripts": ["background.js"]
+  }
+}

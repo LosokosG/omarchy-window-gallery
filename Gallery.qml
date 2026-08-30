@@ -30,7 +30,26 @@ Item {
   property string filterText: ""
   property int selectedIndex: 0
   property var allRows: []
+  property var tabRows: []
   property var filtered: []
+
+  // Where the Firefox extension's native host publishes the tab list. Absent
+  // when the extension is not installed, in which case the gallery simply
+  // shows windows.
+  readonly property string runtimeDir:
+    (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/omarchy-window-gallery"
+  readonly property string tabsPath: runtimeDir + "/tabs.json"
+
+  // manifest.__sourceDir is stamped in by the plugin registry; it may arrive
+  // as a plain path or a file:// URL.
+  readonly property string pluginDir: {
+    var dir = String((root.manifest && root.manifest.__sourceDir) || "")
+    return dir.indexOf("file://") === 0 ? dir.substring(7) : dir
+  }
+  readonly property string tabHostScript: pluginDir + "/native-host/omarchy-window-gallery-host.py"
+
+  property int tabsShown: 0
+  property int tabsTotal: 0
 
   // ---------------------------------------------------------------- theme
   //
@@ -163,7 +182,22 @@ Item {
   // Asks Hyprland for its client list; rebuildFrom() runs when it answers.
   function rebuild() {
     Hyprland.refreshToplevels()
+    tabsProcess.running = true
     clientsProcess.running = true
+  }
+
+  // Missing file, no extension, malformed content: all mean "no tabs", never
+  // an error the user has to care about.
+  function loadTabs(tabsJson) {
+    var tabs = []
+    try {
+      tabs = JSON.parse(tabsJson)
+    } catch (e) {
+      tabs = []
+    }
+    root.tabRows = Array.isArray(tabs)
+      ? WindowList.buildTabRows(tabs, WindowList.glyphFor("firefox"))
+      : []
   }
 
   function rebuildFrom(clientsJson) {
@@ -193,6 +227,15 @@ Item {
   }
 
   Process {
+    id: tabsProcess
+    command: ["cat", root.tabsPath]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.loadTabs(text)
+    }
+  }
+
+  Process {
     id: clientsProcess
     command: ["hyprctl", "clients", "-j"]
     stdout: StdioCollector {
@@ -202,7 +245,22 @@ Item {
   }
 
   function applyFilter() {
-    var grouped = WindowList.groupRows(WindowList.filterRows(root.allRows, root.filterText))
+    var combined = root.allRows.concat(root.tabRows)
+    var matched = WindowList.filterRows(combined, root.filterText)
+
+    // Unfiltered, show only the most recent handful of tabs; searching lifts
+    // the cap, because that is when someone is hunting for one.
+    var capped = root.filterText
+      ? { rows: matched, shown: 0, total: 0 }
+      : WindowList.capTabs(matched, 6)
+    root.tabsShown = capped.shown
+    root.tabsTotal = capped.total
+
+    var grouped = WindowList.groupRows(capped.rows)
+    for (var i = 0; i < grouped.groups.length; i++) {
+      if (grouped.groups[i].title === "Tabs" && root.tabsTotal > root.tabsShown)
+        grouped.groups[i].title = "Tabs (" + root.tabsShown + " of " + root.tabsTotal + ")"
+    }
     root.filtered = grouped.rows
     root.groups = grouped.groups
     if (root.filtered.length === 0) root.selectedIndex = 0
@@ -269,11 +327,35 @@ Item {
   // ignores it from a layer surface that was holding focus.
   function focusRow(row) {
     if (!row) return
+
+    if (row.source === "tab") {
+      root.focusTab(row)
+      return
+    }
+
     if (row.address)
       Quickshell.execDetached(["hyprctl", "dispatch",
         'hl.dsp.focus({ window = "address:' + row.address + '" })'])
     else if (row.wayland && typeof row.wayland.activate === "function")
       row.wayland.activate()
+  }
+
+  // Two halves: the extension selects the tab inside Firefox, and Hyprland
+  // raises the browser window. Neither alone puts the tab in front of you.
+  function focusTab(row) {
+    Quickshell.execDetached(["python3", root.tabHostScript, "--activate",
+      String(row.tabId), String(row.windowId)])
+
+    var browser = null
+    for (var i = 0; i < root.allRows.length; i++) {
+      var candidate = root.allRows[i]
+      if (candidate.appClass.toLowerCase().indexOf("firefox") >= 0
+        && (browser === null || candidate.mru < browser.mru))
+        browser = candidate
+    }
+    if (browser && browser.address)
+      Quickshell.execDetached(["hyprctl", "dispatch",
+        'hl.dsp.focus({ window = "address:' + browser.address + '" })'])
   }
 
   // The chosen tile animates onto the window's real position and dissolves
@@ -627,9 +709,11 @@ Item {
                           Text {
                             width: parent.width
                             text: !tile.row ? ""
-                              : (tile.row.playing && tile.row.trackTitle
-                                ? tile.row.trackTitle
-                                : (tile.row.workspaceName ? "Workspace " + tile.row.workspaceName : ""))
+                              : tile.row.source === "tab"
+                                ? (tile.row.host || "browser tab")
+                                : (tile.row.playing && tile.row.trackTitle
+                                  ? tile.row.trackTitle
+                                  : (tile.row.workspaceName ? "Workspace " + tile.row.workspaceName : ""))
                             color: root.foreground
                             opacity: 0.45
                             font.family: root.fontFamily

@@ -125,7 +125,9 @@ function buildRows(clients, waylandByAddress, players) {
       playing: media ? media.playing : false,
       trackTitle: media ? media.track : "",
       wayland: waylandByAddress[address] || null,
-      mru: mru
+      mru: mru,
+      search: (String(c.title || "") + " " + appClass + " "
+        + (media ? media.track : "") + " " + String(ws.name || "")).toLowerCase()
     })
   }
 
@@ -134,8 +136,8 @@ function buildRows(clients, waylandByAddress, players) {
 }
 
 // Space-separated terms are ANDed. "playing" and "fullscreen" select on
-// badges rather than text, so they can be combined with a normal search:
-// "playing fire" finds a playing Firefox.
+// badges rather than text, so they combine with a normal search: "playing
+// fire" finds a playing Firefox.
 function filterRows(rows, text) {
   var query = String(text || "").trim().toLowerCase()
   if (!query) return rows
@@ -145,21 +147,88 @@ function filterRows(rows, text) {
 
   for (var i = 0; i < rows.length; i++) {
     var r = rows[i]
-    var haystack = (r.title + " " + r.appClass + " " + r.trackTitle
-      + " " + r.workspaceName).toLowerCase()
     var keep = true
 
     for (var t = 0; t < terms.length; t++) {
       var term = terms[t]
       if (term === "playing") { if (!r.playing) { keep = false; break } continue }
       if (term === "fullscreen") { if (!r.fullscreen) { keep = false; break } continue }
-      if (haystack.indexOf(term) < 0) { keep = false; break }
+      if (term === "tab") { if (r.source !== "tab") { keep = false; break } continue }
+      if (r.search.indexOf(term) < 0) { keep = false; break }
     }
 
     if (keep) out.push(r)
   }
 
   return out
+}
+
+// ------------------------------------------------------------ browser tabs
+//
+// Tabs arrive from the Firefox extension via the native host. They are rows
+// like any other, tagged with a different source, so search and grouping need
+// no special cases beyond activation.
+function buildTabRows(tabs, glyph) {
+  var rows = []
+
+  for (var i = 0; i < tabs.length; i++) {
+    var tab = tabs[i]
+    if (!tab || tab.active === true) continue   // the visible tab is reachable already
+
+    var url = String(tab.url || "")
+    if (url.indexOf("about:") === 0) continue
+
+    var host = ""
+    var match = url.match(/^[a-z]+:\/\/([^\/]+)/)
+    if (match) host = match[1].replace(/^www\./, "")
+
+    rows.push({
+      source: "tab",
+      address: "",
+      title: String(tab.title || url || "(untitled tab)"),
+      appClass: "firefox",
+      glyph: glyph,
+      workspaceId: -1,
+      workspaceName: "",
+      monitorName: "",
+      fullscreen: false,
+      floating: false,
+      at: null,
+      size: null,
+      playing: tab.audible === true,
+      trackTitle: "",
+      wayland: null,
+      tabId: tab.id,
+      windowId: tab.windowId,
+      host: host,
+      lastAccessed: Number(tab.lastAccessed) || 0,
+      search: (String(tab.title || "") + " " + url + " tab").toLowerCase()
+    })
+  }
+
+  // Most recently visited first, and ranked after every real window so a
+  // window always wins the initial selection.
+  rows.sort(function (a, b) { return b.lastAccessed - a.lastAccessed })
+  for (var r = 0; r < rows.length; r++) rows[r].mru = 100000 + r
+
+  return rows
+}
+
+// With fifty tabs open the gallery would be nothing but tabs, so the
+// unfiltered view shows only the most recent few. Searching lifts the cap:
+// that is when someone is actually hunting for one.
+function capTabs(rows, limit) {
+  var kept = []
+  var tabs = 0
+  var total = 0
+
+  for (var i = 0; i < rows.length; i++) {
+    if (rows[i].source !== "tab") { kept.push(rows[i]); continue }
+    total++
+    if (tabs < limit) { kept.push(rows[i]); tabs++ }
+  }
+
+  return { rows: kept, shown: tabs, total: total }
 }
 
 // ---------------------------------------------------------------- grouping
@@ -171,10 +240,12 @@ function filterRows(rows, text) {
 var GROUP_ORDER = [
   { key: "playing", title: "Playing" },
   { key: "fullscreen", title: "Fullscreen" },
-  { key: "windows", title: "Windows" }
+  { key: "windows", title: "Windows" },
+  { key: "tabs", title: "Tabs" }
 ]
 
 function groupKeyFor(row) {
+  if (row.source === "tab") return "tabs"
   if (row.playing) return "playing"
   if (row.fullscreen) return "fullscreen"
   return "windows"
