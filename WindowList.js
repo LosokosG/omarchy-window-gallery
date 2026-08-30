@@ -59,6 +59,15 @@ function matchPlayer(appClass, players) {
   return null
 }
 
+// Quickshell reports a toplevel address without the "0x" prefix, while
+// Hyprland's `address:` selector requires it. Dispatching the bare form is
+// silently a no-op, so normalize here rather than at each call site.
+function normalizeAddress(address) {
+  var a = String(address || "")
+  if (!a) return ""
+  return a.indexOf("0x") === 0 ? a : "0x" + a
+}
+
 // Build the row list, most-recently-used first. The currently focused window
 // is dropped: switching to it is a no-op, and leaving it out makes the first
 // tile reliably "the window I was just in".
@@ -81,7 +90,7 @@ function buildRows(toplevels, players) {
 
     rows.push({
       source: "window",
-      address: String(tl.address || ""),
+      address: normalizeAddress(tl.address),
       title: String(ipc.title || tl.title || "(untitled)"),
       appClass: appClass,
       glyph: glyphFor(appClass),
