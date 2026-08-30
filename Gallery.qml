@@ -179,16 +179,29 @@ Item {
     var row = root.filtered[index]
     if (!row) return
 
-    // Release the keyboard grab first, or the compositor has nowhere to hand
-    // focus to.
+    // Release the keyboard grab first: while the layer surface holds
+    // exclusive focus the compositor has nowhere to hand focus to, and the
+    // switch is silently dropped.
     root.committing = true
-
-    if (row.wayland && typeof row.wayland.activate === "function") row.wayland.activate()
-    else if (row.address) Hyprland.dispatch('hl.dsp.focus({ window = "address:' + row.address + '" })')
 
     root.startFlight(row, index)
     root.opened = false
     unmountTimer.restart()
+
+    // Focus on the next tick, once the keyboardFocus change above has
+    // actually reached the compositor.
+    Qt.callLater(function () { root.focusRow(row) })
+  }
+
+  // Hyprland's dispatcher is authoritative and follows the window across
+  // workspaces. The Wayland activate() request is the portable fallback, but
+  // Hyprland ignores it from a layer surface that was holding focus.
+  function focusRow(row) {
+    if (!row) return
+    if (row.address)
+      Hyprland.dispatch('hl.dsp.focus({ window = "address:' + row.address + '" })')
+    else if (row.wayland && typeof row.wayland.activate === "function")
+      row.wayland.activate()
   }
 
   // The chosen tile animates onto the window's real position and dissolves
