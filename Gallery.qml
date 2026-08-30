@@ -377,7 +377,6 @@ Item {
               currentIndex: root.selectedIndex
               highlightFollowsCurrentItem: true
               highlightMoveDuration: 140
-              highlightResizeDuration: 0
               onCurrentIndexChanged: positionViewAtIndex(currentIndex, GridView.Contain)
 
               // A single highlight rectangle slides between cells instead of
