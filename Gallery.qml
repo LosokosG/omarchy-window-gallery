@@ -48,17 +48,32 @@ Item {
   readonly property int headerHeight: Math.max(Style.space(30), Style.font.heading + Style.spacing.controlPaddingY * 2)
 
   // ---------------------------------------------------------------- layout
-  readonly property int tileWidth: Style.space(232)
+  //
+  // The card is sized from its content, so two windows get a small card and
+  // twelve get a large one. BorderSurface insets (border + padding) are
+  // counted explicitly: leaving them out makes the grid narrower than
+  // columns * tileWidth, which silently wraps the last tile onto a row the
+  // card is too short to show.
+  readonly property real cardInsetX: Border.left(borderSpec) + Border.right(borderSpec) + contentMargin * 2
+  readonly property real cardInsetY: Border.top(borderSpec) + Border.bottom(borderSpec) + contentMargin * 2
+
+  readonly property int screenWidth: targetScreen ? targetScreen.width : 1920
+  readonly property int screenHeight: targetScreen ? targetScreen.height : 1080
+
+  // Previews have to be big enough to recognise at a glance, which means
+  // scaling with the display rather than pinning one pixel size.
+  readonly property int tileWidth: Math.round(
+    Math.max(Style.space(210), Math.min(Style.space(330), screenWidth / 8)))
   readonly property int previewHeight: Math.round(tileWidth * 9 / 16)
-  readonly property int labelHeight: Style.space(36)
+  readonly property int labelHeight: Style.space(38)
   readonly property int tileHeight: previewHeight + labelHeight
   readonly property int maxColumns: 5
 
-  readonly property int maxCardWidth: Style.space(1180)
-  readonly property int maxCardHeight: Style.space(780)
+  readonly property int maxCardWidth: Math.round(Math.min(Style.space(1500), screenWidth * 0.72))
+  readonly property int maxCardHeight: Math.round(Math.min(Style.space(900), screenHeight * 0.72))
 
   readonly property int columns: {
-    var fits = Math.floor((maxCardWidth - contentMargin * 2) / tileWidth)
+    var fits = Math.floor((maxCardWidth - cardInsetX) / tileWidth)
     var n = Math.max(1, filtered.length)
     return Math.max(1, Math.min(n, maxColumns, Math.max(1, fits)))
   }
@@ -265,9 +280,9 @@ Item {
       BorderSurface {
         id: card
 
-        width: Math.min(root.maxCardWidth, root.contentMargin * 2 + root.columns * root.tileWidth)
+        width: Math.min(root.maxCardWidth, root.cardInsetX + root.columns * root.tileWidth)
         height: Math.min(root.maxCardHeight,
-          root.contentMargin * 2 + root.headerHeight + root.contentSpacing + root.gridRows * root.tileHeight)
+          root.cardInsetY + root.headerHeight + root.contentSpacing + root.gridRows * root.tileHeight)
         anchors.centerIn: parent
         radius: root.cornerRadius
         color: root.background
