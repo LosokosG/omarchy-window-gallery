@@ -194,12 +194,15 @@ Item {
   }
 
   // Hyprland's dispatcher is authoritative and follows the window across
-  // workspaces. The Wayland activate() request is the portable fallback, but
-  // Hyprland ignores it from a layer surface that was holding focus.
+  // workspaces. It goes through hyprctl rather than Hyprland.dispatch(),
+  // which does not take effect here even with an identical request string.
+  // The Wayland activate() request is the portable fallback, but Hyprland
+  // ignores it from a layer surface that was holding focus.
   function focusRow(row) {
     if (!row) return
     if (row.address)
-      Hyprland.dispatch('hl.dsp.focus({ window = "address:' + row.address + '" })')
+      Quickshell.execDetached(["hyprctl", "dispatch",
+        'hl.dsp.focus({ window = "address:' + row.address + '" })'])
     else if (row.wayland && typeof row.wayland.activate === "function")
       row.wayland.activate()
   }
@@ -472,7 +475,7 @@ Item {
 
                       Text {
                         visible: tile.modelData.fullscreen
-                        text: ""
+                        text: "\uf065"
                         color: root.selectedText
                         font.family: root.fontFamily
                         font.pixelSize: Style.font.iconSmall
@@ -480,7 +483,7 @@ Item {
 
                       Text {
                         visible: tile.modelData.playing
-                        text: ""
+                        text: "\uf04b"
                         color: root.selectedText
                         font.family: root.fontFamily
                         font.pixelSize: Style.font.iconSmall
@@ -550,7 +553,7 @@ Item {
               visible: root.filtered.length === 0
 
               Text {
-                text: ""
+                text: "\uf002"
                 color: root.selectedText
                 opacity: 0.75
                 font.family: root.fontFamily

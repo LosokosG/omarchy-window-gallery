@@ -148,3 +148,35 @@ behaviour:
 7. Badges appear for a fullscreen window and for a playing media player.
 8. Theme switch restyles the overlay without a shell restart.
 9. Memory returns to baseline after close.
+
+## Implementation notes
+
+Two compositor behaviours cost real debugging time and are not documented
+anywhere obvious. Both are the kind of thing that looks correct in a log.
+
+**Toplevel addresses lose their `0x` prefix.** Quickshell's
+`HyprlandToplevel.address` returns `55ff7e815c30`, while Hyprland's `address:`
+selector requires `0x55ff7e815c30`. Dispatching the bare form is not an error —
+it resolves to no window and is silently dropped, so focus simply never moves
+while the log line looks perfectly well-formed. `WindowList.normalizeAddress`
+adds the prefix once, at the point the row is built.
+
+**`Hyprland.dispatch()` does not take effect from this plugin.** The identical
+request string works through `hyprctl dispatch` and does nothing through
+Quickshell's `Hyprland.dispatch()`. Focus therefore goes out through
+`Quickshell.execDetached(["hyprctl", "dispatch", ...])`. That spends one
+short-lived process per switch, which is irrelevant at the frequency a human
+changes windows.
+
+A third, milder trap: **activation is refused while the overlay holds the
+keyboard.** A layer surface with `WlrKeyboardFocus.Exclusive` gives the
+compositor nowhere to hand focus to, so the request is dropped. The gallery
+sets `committing` first, which flips `keyboardFocus` to `None`, and only
+focuses on the next tick.
+
+### Glyphs
+
+Badge and fallback glyphs are written as `\uXXXX` escapes rather than literal
+Private Use Area characters. Literal PUA characters do not reliably survive
+being written to disk by tooling, and the failure is silent: the string
+becomes empty and the badge renders as nothing at all.
