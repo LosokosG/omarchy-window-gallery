@@ -633,9 +633,24 @@ Item {
                         color: Qt.rgba(0, 0, 0, 0.22)
                         clip: true
 
+                        // Sized to cover the frame rather than fit inside
+                        // it: a tiled window is usually taller than a 16:9
+                        // tile, and fitting shrinks its preview to a narrow
+                        // strip between two dead bars. Anchored to the top,
+                        // where the content that identifies a window is.
                         ScreencopyView {
                           id: preview
-                          anchors.fill: parent
+
+                          readonly property real frameAspect:
+                            previewFrame.height > 0 ? previewFrame.width / previewFrame.height : 1
+                          readonly property real sourceAspect:
+                            sourceSize.height > 0 ? sourceSize.width / sourceSize.height : frameAspect
+                          readonly property bool wider: sourceAspect > frameAspect
+
+                          anchors.horizontalCenter: parent.horizontalCenter
+                          y: 0
+                          width: wider ? previewFrame.height * sourceAspect : previewFrame.width
+                          height: wider ? previewFrame.height : previewFrame.width / sourceAspect
                           // Bound to `mounted`, so captures are released on
                           // close and nothing is held while idle.
                           captureSource: root.mounted && tile.row ? tile.row.wayland : null
