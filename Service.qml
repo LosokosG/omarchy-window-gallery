@@ -18,24 +18,24 @@ Item {
   property var shell: null
   property var manifest: null
 
-  // __sourceDir is stamped in by the plugin registry, and may arrive as a
-  // plain path or a file:// URL.
-  readonly property string pluginDir: {
-    var dir = String((root.manifest && root.manifest.__sourceDir) || "")
-    return dir.indexOf("file://") === 0 ? dir.substring(7) : dir
-  }
-
   property bool keybindAttempted: false
 
-  // The plugin loader assigns `manifest` after createObject() returns, so
-  // Component.onCompleted runs while pluginDir is still empty. Trigger off the
-  // assignment instead, guarded so a later manifest change cannot re-run it.
+  // The loader assigns `manifest` after createObject() returns, so
+  // Component.onCompleted is too early to see it.
   onManifestChanged: root.installKeybind()
 
   function installKeybind() {
-    if (root.keybindAttempted || root.pluginDir === "") return
+    if (root.keybindAttempted) return
+
+    // Read __sourceDir straight off the manifest rather than through a bound
+    // property: QML does not guarantee that a binding depending on `manifest`
+    // has re-evaluated by the time this handler runs on the same signal.
+    var dir = String((root.manifest && root.manifest.__sourceDir) || "")
+    if (dir.indexOf("file://") === 0) dir = dir.substring(7)
+    if (dir === "") return
+
     root.keybindAttempted = true
-    keybindProcess.command = ["bash", root.pluginDir + "/bin/omarchy-window-gallery-keybind", "install"]
+    keybindProcess.command = ["bash", dir + "/bin/omarchy-window-gallery-keybind", "install"]
     keybindProcess.running = true
   }
 
