@@ -47,7 +47,7 @@ Item {
     var dir = String((root.manifest && root.manifest.__sourceDir) || "")
     return dir.indexOf("file://") === 0 ? dir.substring(7) : dir
   }
-  readonly property string tabHostScript: pluginDir + "/native-host/omarchy-window-gallery-host.py"
+  readonly property string tabHostScript: pluginDir + "/browser/native-host/omarchy-window-gallery-host.py"
 
   property int tabsShown: 0
   property int tabsTotal: 0

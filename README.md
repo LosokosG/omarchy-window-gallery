@@ -99,11 +99,11 @@ external way to activate a tab, so this needs a small extension and a native
 messaging host.
 
 ```bash
-~/.config/omarchy/plugins/losokos.window-gallery/native-host/install.sh
+~/.config/omarchy/plugins/losokos.window-gallery/browser/native-host/install.sh
 ```
 
 Then load the extension in Firefox: `about:debugging#/runtime/this-firefox` →
-**Load Temporary Add-on…** → pick `firefox-extension/manifest.json`.
+**Load Temporary Add-on…** → pick `browser/firefox-extension/manifest.json`.
 
 Tabs appear under their own heading, ranked by how recently you visited them
 and always after your windows. The unfiltered view shows the six most recent
@@ -125,7 +125,7 @@ Without the extension the gallery simply shows windows; nothing errors.
 > self-distribution is allowed, it does not have to be listed publicly:
 >
 > ```bash
-> npx web-ext sign --source-dir firefox-extension \
+> npx web-ext sign --source-dir browser/firefox-extension \
 >   --api-key "$AMO_JWT_ISSUER" --api-secret "$AMO_JWT_SECRET"
 > ```
 
