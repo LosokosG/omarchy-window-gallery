@@ -98,22 +98,14 @@ thumbnails, so a tab you cannot find is one search away. Firefox exposes no
 external way to activate a tab, so this needs a small extension and a native
 messaging host.
 
-**1. Register the native host** (once):
-
 ```bash
-~/.config/omarchy/plugins/losokos.window-gallery/browser/native-host/install.sh
+~/.config/omarchy/plugins/losokos.window-gallery/browser/setup.sh
 ```
 
-**2. Install the extension.** Release Firefox only installs *signed*
-extensions permanently, so use the signed build:
-
-```bash
-# Download the .xpi from the latest release, then:
-firefox ~/Downloads/better_alt_tab_tabs-*.xpi
-```
-
-Firefox shows an install prompt; once accepted it survives restarts and
-reboots like any other add-on.
+That registers the native messaging host, downloads the signed extension from
+the latest release, and hands it to Firefox. Accept Firefox's install prompt
+and you are done — it survives restarts and reboots like any other add-on.
+Re-run the same command to update the extension later.
 
 <details>
 <summary>Loading it temporarily instead (development only)</summary>
@@ -130,10 +122,9 @@ signed build for daily use.
 <details>
 <summary>Signing your own build</summary>
 
-If no signed build is published yet, or you have modified the extension, sign
-it yourself. The "unlisted" channel is free, needs no review, and is not
-published on addons.mozilla.org — it just comes back signed so Firefox will
-accept it. Get an API key and secret at
+If you have modified the extension, sign it yourself. The "unlisted" channel
+is free, needs no review, and is not published on addons.mozilla.org — it just
+comes back signed so Firefox will accept it. Get an API key and secret at
 [addons.mozilla.org/developers/addon/api/key](https://addons.mozilla.org/developers/addon/api/key/):
 
 ```bash
@@ -143,8 +134,8 @@ export AMO_JWT_SECRET="your-secret"
 firefox browser/dist/*.xpi
 ```
 
-Note that the extension id (`window-gallery@losokos`) belongs to this
-project's AMO account; signing under your own account requires changing it in
+The extension id (`window-gallery@losokos`) belongs to this project's AMO
+account; signing under your own account requires changing it in
 `browser/firefox-extension/manifest.json`. Re-signing needs a version bump,
 since AMO rejects a version it has already signed.
 
