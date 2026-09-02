@@ -1,0 +1,146 @@
+#!/bin/bash
+# Installs or removes the gallery's Hyprland keybinding.
+#
+# Shell plugins run inside the Quickshell process and cannot register a
+# Hyprland bind, so the binding has to live in the user's bindings.lua. This
+# script is the only thing that writes there, which is what makes the change
+# reversible: `remove` takes back exactly what `install` added and nothing
+# else.
+set -euo pipefail
+
+MODULE="losokos.window-gallery"
+BINDINGS="${OMARCHY_WINDOW_GALLERY_BINDINGS:-$HOME/.config/hypr/bindings.lua}"
+BEGIN_MARKER="-- >>> $MODULE keybind (managed)"
+END_MARKER="-- <<< $MODULE keybind"
+
+usage() {
+  cat >&2 <<USAGE
+Usage: omarchy-window-gallery-keybind <install|remove|status>
+
+  install   Bind ALT + TAB to the gallery (no-op if already present)
+  remove    Take the binding back out of bindings.lua
+  status    Report whether the binding is installed
+USAGE
+  exit 2
+}
+
+reload_hyprland() {
+  command -v hyprctl >/dev/null 2>&1 && hyprctl reload >/dev/null 2>&1 || true
+}
+
+# Build the replacement beside the target and rename(2) it into place. The
+# bindings path is never opened for writing, so a symlink swapped into it
+# mid-run cannot redirect the write, and rename replaces the directory entry
+# itself rather than following a link.
+replace_file() {
+  local source=$1
+  local dir
+  dir=$(dirname -- "$BINDINGS")
+  local tmp
+  tmp=$(mktemp "$dir/.bindings.lua.XXXXXX")
+  trap 'rm -f "$tmp"' EXIT
+  cat -- "$source" > "$tmp"
+  chmod --reference="$BINDINGS" "$tmp" 2>/dev/null || true
+  mv -f -- "$tmp" "$BINDINGS"
+  trap - EXIT
+}
+
+is_installed() {
+  [[ -e $BINDINGS ]] && grep -qF "$MODULE" "$BINDINGS"
+}
+
+do_install() {
+  if [[ ! -e $BINDINGS ]]; then
+    echo "omarchy-window-gallery: $BINDINGS not found; skipping keybind setup." >&2
+    return 0
+  fi
+
+  if is_installed; then
+    return 0
+  fi
+
+  # Omarchy stacks two defaults on ALT + TAB (window.cycle_next and
+  # window.bring_to_top) and two more on ALT + SHIFT + TAB, so each key is
+  # unbound twice before being rebound.
+  local staged
+  staged=$(mktemp)
+  trap 'rm -f "$staged"' EXIT
+  {
+    cat -- "$BINDINGS"
+    cat <<BLOCK
+
+$BEGIN_MARKER
+-- Remove with: omarchy-window-gallery-keybind remove
+pcall(hl.unbind, "ALT + TAB")
+pcall(hl.unbind, "ALT + TAB")
+pcall(hl.unbind, "ALT + SHIFT + TAB")
+pcall(hl.unbind, "ALT + SHIFT + TAB")
+o.bind("ALT + TAB", "Window gallery", "omarchy-shell shell call $MODULE step next")
+o.bind("ALT + SHIFT + TAB", "Window gallery (back)", "omarchy-shell shell call $MODULE step prev")
+$END_MARKER
+BLOCK
+  } > "$staged"
+
+  replace_file "$staged"
+  rm -f "$staged"
+  trap - EXIT
+
+  reload_hyprland
+  echo "Bound ALT + TAB to the window gallery in $BINDINGS"
+}
+
+do_remove() {
+  if [[ ! -e $BINDINGS ]] || ! is_installed; then
+    echo "omarchy-window-gallery: no keybinding found in $BINDINGS"
+    return 0
+  fi
+
+  local staged
+  staged=$(mktemp)
+  trap 'rm -f "$staged"' EXIT
+
+  # Handles both the marked block and the earlier unmarked format. Blank
+  # lines are buffered so a block can consume exactly the one blank line that
+  # install put in front of it -- that is what makes install/remove an exact
+  # round trip instead of leaving a stray line behind each cycle. Only lines
+  # naming this plugin, or the ALT+TAB unbinds belonging to it, are ever
+  # dropped; another plugin's bindings are untouched.
+  awk -v begin_marker="$BEGIN_MARKER" -v end_marker="$END_MARKER" \
+      -v legacy_marker="-- Added by the $MODULE plugin." -v module="$MODULE" '
+    function flush(drop,   i, n) {
+      n = pending - drop
+      if (n < 0) n = 0
+      for (i = 0; i < n; i++) print ""
+      pending = 0
+    }
+    {
+      if (inblock) {
+        if (index($0, end_marker) == 1) inblock = 0
+        next
+      }
+      if (index($0, begin_marker) == 1)  { flush(1); inblock = 1; next }
+      if (index($0, legacy_marker) == 1) { flush(1); legacy = 1; next }
+      if (legacy) {
+        if ($0 ~ /^pcall\(hl\.unbind, "ALT \+ (SHIFT \+ )?TAB"\)$/ || index($0, module) > 0) next
+        legacy = 0
+      }
+      if ($0 == "") { pending++; next }
+      flush(0); print
+    }
+    END { flush(0) }
+  ' "$BINDINGS" > "$staged"
+
+  replace_file "$staged"
+  rm -f "$staged"
+  trap - EXIT
+
+  reload_hyprland
+  echo "Removed the window gallery keybinding from $BINDINGS"
+}
+
+case "${1:-}" in
+  install) do_install ;;
+  remove)  do_remove ;;
+  status)  if is_installed; then echo "installed"; else echo "not installed"; fi ;;
+  *)       usage ;;
+esac
