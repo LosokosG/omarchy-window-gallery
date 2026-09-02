@@ -103,9 +103,10 @@ messaging host.
 ```
 
 That registers the native messaging host, downloads the signed extension from
-the latest release, and hands it to Firefox. Accept Firefox's install prompt
-and you are done — it survives restarts and reboots like any other add-on.
-Re-run the same command to update the extension later.
+the [latest release](https://github.com/LosokosG/omarchy-window-gallery/releases/latest),
+and hands it to Firefox. Accept Firefox's install prompt and you are done — it
+survives restarts and reboots like any other add-on. Re-run the same command
+to update the extension later.
 
 <details>
 <summary>Loading it temporarily instead (development only)</summary>
