@@ -24,5 +24,10 @@ cat > "$manifest" <<JSON
 JSON
 
 echo "Registered native host at $manifest"
-echo "Now load the extension: about:debugging#/runtime/this-firefox"
-echo "  -> Load Temporary Add-on -> $host_dir/../firefox-extension/manifest.json"
+echo
+echo "Next: install the signed extension so it survives restarts."
+echo "  Download the .xpi from the project's releases, then: firefox <file>.xpi"
+echo
+echo "For development only (dropped on every Firefox restart):"
+echo "  about:debugging#/runtime/this-firefox -> Load Temporary Add-on"
+echo "  -> $host_dir/../firefox-extension/manifest.json"

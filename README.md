@@ -98,12 +98,63 @@ thumbnails, so a tab you cannot find is one search away. Firefox exposes no
 external way to activate a tab, so this needs a small extension and a native
 messaging host.
 
+**1. Register the native host** (once):
+
 ```bash
 ~/.config/omarchy/plugins/losokos.window-gallery/browser/native-host/install.sh
 ```
 
-Then load the extension in Firefox: `about:debugging#/runtime/this-firefox` →
-**Load Temporary Add-on…** → pick `browser/firefox-extension/manifest.json`.
+**2. Install the extension.** Release Firefox only installs *signed*
+extensions permanently, so use the signed build:
+
+```bash
+# Download the .xpi from the latest release, then:
+firefox ~/Downloads/better_alt_tab_tabs-*.xpi
+```
+
+Firefox shows an install prompt; once accepted it survives restarts and
+reboots like any other add-on.
+
+<details>
+<summary>Loading it temporarily instead (development only)</summary>
+
+`about:debugging#/runtime/this-firefox` → **Load Temporary Add-on…** → pick
+`browser/firefox-extension/manifest.json`.
+
+This is for hacking on the extension. **Firefox drops a temporary add-on on
+every restart**, so tab support disappears until you load it again — use the
+signed build for daily use.
+
+</details>
+
+<details>
+<summary>Signing your own build</summary>
+
+If no signed build is published yet, or you have modified the extension, sign
+it yourself. The "unlisted" channel is free, needs no review, and is not
+published on addons.mozilla.org — it just comes back signed so Firefox will
+accept it. Get an API key and secret at
+[addons.mozilla.org/developers/addon/api/key](https://addons.mozilla.org/developers/addon/api/key/):
+
+```bash
+export AMO_JWT_ISSUER="user:12345678:123"
+export AMO_JWT_SECRET="your-secret"
+./browser/sign-extension.sh
+firefox browser/dist/*.xpi
+```
+
+Note that the extension id (`window-gallery@losokos`) belongs to this
+project's AMO account; signing under your own account requires changing it in
+`browser/firefox-extension/manifest.json`. Re-signing needs a version bump,
+since AMO rejects a version it has already signed.
+
+Tagged releases sign automatically via
+[`.github/workflows/sign-extension.yml`](.github/workflows/sign-extension.yml),
+which needs `AMO_JWT_ISSUER` and `AMO_JWT_SECRET` repository secrets.
+
+</details>
+
+### How tabs behave
 
 Tabs appear under their own heading, ranked by how recently you visited them
 and always after your windows. The unfiltered view shows the six most recent
@@ -117,17 +168,6 @@ it costs one capture per switch rather than one per tab, and the image shows
 the tab as you last saw it.
 
 Without the extension the gallery simply shows windows; nothing errors.
-
-> **Temporary vs permanent.** A temporary add-on is dropped when Firefox
-> restarts. Release Firefox only installs *signed* extensions permanently, so
-> to make it stick, sign it through
-> [addons.mozilla.org](https://addons.mozilla.org/developers/) — free, and
-> self-distribution is allowed, it does not have to be listed publicly:
->
-> ```bash
-> npx web-ext sign --source-dir browser/firefox-extension \
->   --api-key "$AMO_JWT_ISSUER" --api-secret "$AMO_JWT_SECRET"
-> ```
 
 ## How it works
 

@@ -1,0 +1,55 @@
+name: Sign browser extension
+
+# Release Firefox only permanently installs signed extensions, so every
+# release ships a signed .xpi that users can install once and keep. Requires
+# repository secrets AMO_JWT_ISSUER and AMO_JWT_SECRET, from
+# https://addons.mozilla.org/developers/addon/api/key/
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sign:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Sign for self-distribution
+        env:
+          AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+          AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+        run: |
+          if [ -z "$AMO_JWT_ISSUER" ] || [ -z "$AMO_JWT_SECRET" ]; then
+            echo "::error::AMO_JWT_ISSUER and AMO_JWT_SECRET repository secrets are not set."
+            exit 1
+          fi
+          npx --yes web-ext@latest sign \
+            --source-dir browser/firefox-extension \
+            --artifacts-dir browser/dist \
+            --channel unlisted \
+            --api-key "$AMO_JWT_ISSUER" \
+            --api-secret "$AMO_JWT_SECRET"
+
+      - name: Attach the signed extension to the release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          xpi=$(find browser/dist -name '*.xpi' -print -quit)
+          [ -n "$xpi" ] || { echo "::error::no signed .xpi produced"; exit 1; }
+          gh release create "${GITHUB_REF_NAME}" --title "${GITHUB_REF_NAME}" --generate-notes 2>/dev/null || true
+          gh release upload "${GITHUB_REF_NAME}" "$xpi" --clobber
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: signed-extension
+          path: browser/dist/*.xpi
