@@ -25,8 +25,16 @@ Item {
     return dir.indexOf("file://") === 0 ? dir.substring(7) : dir
   }
 
-  Component.onCompleted: {
-    if (root.pluginDir === "") return
+  property bool keybindAttempted: false
+
+  // The plugin loader assigns `manifest` after createObject() returns, so
+  // Component.onCompleted runs while pluginDir is still empty. Trigger off the
+  // assignment instead, guarded so a later manifest change cannot re-run it.
+  onManifestChanged: root.installKeybind()
+
+  function installKeybind() {
+    if (root.keybindAttempted || root.pluginDir === "") return
+    root.keybindAttempted = true
     keybindProcess.command = ["bash", root.pluginDir + "/bin/omarchy-window-gallery-keybind", "install"]
     keybindProcess.running = true
   }
