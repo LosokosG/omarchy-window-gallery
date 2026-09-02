@@ -75,8 +75,8 @@ pcall(hl.unbind, "ALT + TAB")
 pcall(hl.unbind, "ALT + TAB")
 pcall(hl.unbind, "ALT + SHIFT + TAB")
 pcall(hl.unbind, "ALT + SHIFT + TAB")
-o.bind("ALT + TAB", "Window gallery", "omarchy-shell shell call $MODULE step next")
-o.bind("ALT + SHIFT + TAB", "Window gallery (back)", "omarchy-shell shell call $MODULE step prev")
+o.bind("ALT + TAB", "Better Alt-Tab", "omarchy-shell shell call $MODULE step next")
+o.bind("ALT + SHIFT + TAB", "Better Alt-Tab (back)", "omarchy-shell shell call $MODULE step prev")
 $END_MARKER
 BLOCK
   } > "$staged"
@@ -86,7 +86,7 @@ BLOCK
   trap - EXIT
 
   reload_hyprland
-  echo "Bound ALT + TAB to the window gallery in $BINDINGS"
+  echo "Bound ALT + TAB to Better Alt-Tab in $BINDINGS"
 }
 
 do_remove() {
@@ -135,7 +135,7 @@ do_remove() {
   trap - EXIT
 
   reload_hyprland
-  echo "Removed the window gallery keybinding from $BINDINGS"
+  echo "Removed the Better Alt-Tab keybinding from $BINDINGS"
 }
 
 case "${1:-}" in

@@ -1,4 +1,4 @@
-# Window Gallery — design
+# Better Alt-Tab — design
 
 An Omarchy shell plugin that replaces Alt-Tab cycling with a searchable
 gallery of **live window previews**.

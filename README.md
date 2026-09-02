@@ -1,9 +1,9 @@
-# Window Gallery
+# Better Alt-Tab
 
 **Alt-Tab that shows you your windows.** A searchable gallery of live window
 previews for [Omarchy](https://omarchy.org/) / Hyprland, bound to `ALT + TAB`.
 
-![Window Gallery](preview.png)
+![Better Alt-Tab](preview.png)
 
 ## Why
 
@@ -62,8 +62,8 @@ pcall(hl.unbind, "ALT + TAB")
 pcall(hl.unbind, "ALT + TAB")
 pcall(hl.unbind, "ALT + SHIFT + TAB")
 pcall(hl.unbind, "ALT + SHIFT + TAB")
-o.bind("ALT + TAB", "Window gallery", "omarchy-shell shell call losokos.window-gallery step next")
-o.bind("ALT + SHIFT + TAB", "Window gallery (back)", "omarchy-shell shell call losokos.window-gallery step prev")
+o.bind("ALT + TAB", "Better Alt-Tab", "omarchy-shell shell call losokos.window-gallery step next")
+o.bind("ALT + SHIFT + TAB", "Better Alt-Tab (back)", "omarchy-shell shell call losokos.window-gallery step prev")
 -- <<< losokos.window-gallery keybind
 ```
 

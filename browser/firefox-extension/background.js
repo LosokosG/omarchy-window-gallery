@@ -1,4 +1,4 @@
-// Publishes the tab list and tab thumbnails to the Omarchy window gallery,
+// Publishes the tab list and tab thumbnails to the Better Alt-Tab gallery,
 // and activates a tab when the gallery asks for one.
 //
 // Thumbnails are captured when you LEAVE a tab, never on demand. A browser

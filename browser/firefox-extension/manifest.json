@@ -1,8 +1,8 @@
 {
   "manifest_version": 2,
-  "name": "Omarchy Window Gallery — Tabs",
+  "name": "Better Alt-Tab — Tabs",
   "version": "1.1.0",
-  "description": "Publishes your open tabs, with thumbnails, to the Omarchy window gallery so they can be searched and focused alongside windows.",
+  "description": "Publishes your open tabs, with thumbnails, to Better Alt-Tab so they can be searched and focused alongside windows.",
   "browser_specific_settings": {
     "gecko": {
       "id": "window-gallery@losokos",
