@@ -1,0 +1,8 @@
+{
+  "name": "better-alt-tab-signing",
+  "private": true,
+  "description": "Pinned toolchain for signing the Better Alt-Tab Firefox extension. Install with `npm ci --ignore-scripts`.",
+  "devDependencies": {
+    "web-ext": "10.6.0"
+  }
+}

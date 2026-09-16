@@ -2,3 +2,4 @@
 *.jsc
 .qt/
 browser/dist/
+browser/signing/node_modules/

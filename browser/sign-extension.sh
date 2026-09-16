@@ -22,7 +22,11 @@ here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 source_dir="$here/firefox-extension"
 out_dir="$here/dist"
 
-command -v npx >/dev/null 2>&1 || { echo "npx is required (install Node.js)" >&2; exit 1; }
+command -v npm >/dev/null 2>&1 || { echo "npm is required (install Node.js)" >&2; exit 1; }
+
+# web-ext comes from the lockfile in signing/, never from the latest release.
+web_ext="$here/signing/node_modules/.bin/web-ext"
+(cd "$here/signing" && npm ci --ignore-scripts --no-audit --no-fund)
 
 version=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$source_dir/manifest.json")
 echo "Signing extension version $version (unlisted channel)…"
@@ -31,7 +35,7 @@ mkdir -p "$out_dir"
 
 # AMO rejects a version it has already signed, so a re-sign needs a version
 # bump in firefox-extension/manifest.json.
-npx --yes web-ext@latest sign \
+"$web_ext" sign \
   --source-dir "$source_dir" \
   --artifacts-dir "$out_dir" \
   --channel unlisted \

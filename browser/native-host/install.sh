@@ -13,20 +13,27 @@ mkdir -p "$manifest_dir"
 
 # allowed_extensions must match the id in firefox-extension/manifest.json, or
 # Firefox refuses the connection without a visible error.
-cat > "$manifest" <<JSON
-{
-  "name": "omarchy_window_gallery",
-  "description": "Publishes Firefox tabs to the Omarchy window gallery",
-  "path": "$host_script",
-  "type": "stdio",
-  "allowed_extensions": ["window-gallery@losokos"]
-}
-JSON
+tmp=$(mktemp "$manifest_dir/.omarchy_window_gallery.XXXXXXXX")
+trap 'rm -f "$tmp"' EXIT
+python3 - "$host_script" > "$tmp" <<'PY'
+import json, sys
+json.dump({
+    "name": "omarchy_window_gallery",
+    "description": "Publishes Firefox tabs to the Omarchy window gallery",
+    "path": sys.argv[1],
+    "type": "stdio",
+    "allowed_extensions": ["window-gallery@losokos"],
+}, sys.stdout, indent=2)
+print()
+PY
+chmod 644 "$tmp"
+mv -f "$tmp" "$manifest"
+trap - EXIT
 
 echo "Registered native host at $manifest"
 echo
-echo "Next: install the signed extension so it survives restarts."
-echo "  Download the .xpi from the project's releases, then: firefox <file>.xpi"
+echo "Next: install the signed extension so it survives restarts:"
+echo "  $host_dir/../setup.sh"
 echo
 echo "For development only (dropped on every Firefox restart):"
 echo "  about:debugging#/runtime/this-firefox -> Load Temporary Add-on"

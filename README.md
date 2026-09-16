@@ -102,11 +102,15 @@ messaging host.
 ~/.config/omarchy/plugins/losokos.window-gallery/browser/setup.sh
 ```
 
-That registers the native messaging host, downloads the signed extension from
-the [latest release](https://github.com/LosokosG/omarchy-window-gallery/releases/latest),
-and hands it to Firefox. Accept Firefox's install prompt and you are done — it
-survives restarts and reboots like any other add-on. Re-run the same command
-to update the extension later.
+That registers the native messaging host, downloads the signed extension
+build pinned by this version of the plugin (a fixed
+[release](https://github.com/LosokosG/omarchy-window-gallery/releases/tag/v1.0.0)
+asset; release tags follow the plugin version, while the file name carries the
+extension's own version), and hands it to Firefox. Before opening it, the script checks the
+file's SHA-256 and that its code is identical to `browser/firefox-extension/`
+in your checkout; any mismatch aborts. Accept Firefox's install prompt and you
+are done — it survives restarts and reboots like any other add-on. After a
+plugin update, re-run the same command to install the build that version pins.
 
 <details>
 <summary>Loading it temporarily instead (development only)</summary>
@@ -140,9 +144,13 @@ account; signing under your own account requires changing it in
 `browser/firefox-extension/manifest.json`. Re-signing needs a version bump,
 since AMO rejects a version it has already signed.
 
-Tagged releases sign automatically via
+The signing toolchain (`web-ext`) is pinned by the lockfile in
+`browser/signing/`. Tagged releases sign automatically via
 [`.github/workflows/sign-extension.yml`](.github/workflows/sign-extension.yml),
-which needs `AMO_JWT_ISSUER` and `AMO_JWT_SECRET` repository secrets.
+which needs `AMO_JWT_ISSUER` and `AMO_JWT_SECRET` repository secrets and prints
+the new asset's SHA-256. Shipping that build to users means updating
+`XPI_TAG`, `XPI_ASSET`, and `XPI_SHA256` in `browser/setup.sh` in the same
+commit as the extension source change.
 
 </details>
 
