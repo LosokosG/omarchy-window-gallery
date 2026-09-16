@@ -25,10 +25,9 @@ cache="${XDG_CACHE_HOME:-$HOME/.cache}/omarchy-window-gallery"
 
 die() { echo "error: $*" >&2; exit 1; }
 
-command -v firefox >/dev/null 2>&1 || die "firefox not found on PATH"
-command -v curl >/dev/null 2>&1 || die "curl is required"
-command -v python3 >/dev/null 2>&1 || die "python3 is required"
-command -v sha256sum >/dev/null 2>&1 || die "sha256sum is required"
+for tool in firefox curl sha256sum unzip jq cmp; do
+  command -v "$tool" >/dev/null 2>&1 || die "$tool is required"
+done
 
 echo "==> Registering the native messaging host"
 "$here/native-host/install.sh" >/dev/null
@@ -43,7 +42,13 @@ tmp=$(mktemp "$cache/.download.XXXXXXXX")
 trap 'rm -f "$tmp"' EXIT
 
 echo "==> Downloading $XPI_ASSET ($XPI_TAG)"
-host_of() { python3 -c 'import sys, urllib.parse; print(urllib.parse.urlsplit(sys.argv[1]).hostname or "")' "$1"; }
+# Anything unusual in the authority (userinfo, port) leaves a host string that
+# is not on the allowlist, so it is refused rather than parsed.
+host_of() {
+  local rest=${1#https://}
+  [[ $rest != "$1" ]] || return 0
+  printf '%s\n' "${rest%%[/?#]*}"
+}
 
 # Redirects are followed by hand so every hop is checked against the allowlist
 # before anything is requested from it.
@@ -79,33 +84,26 @@ actual_sha=$(sha256sum "$tmp" | cut -d' ' -f1)
 
 # The archive must contain the extension source from this checkout and nothing
 # else besides Mozilla's signature files. AMO re-serializes manifest.json, so
-# it is compared as parsed JSON; every other file must match byte for byte.
-python3 - "$tmp" "$here/firefox-extension" <<'PY' || die "the extension does not match the source in this checkout"
-import json, os, sys, zipfile
-
-xpi, src = sys.argv[1], sys.argv[2]
-signature = {"META-INF/manifest.mf", "META-INF/mozilla.sf", "META-INF/mozilla.rsa",
-             "META-INF/cose.manifest", "META-INF/cose.sig"}
-expected = {name for name in os.listdir(src) if os.path.isfile(os.path.join(src, name))}
-
-with zipfile.ZipFile(xpi) as z:
-    names = {i.filename for i in z.infolist() if not i.is_dir()}
-    code = names - signature
-    if code != expected:
-        sys.exit(f"file set differs: extra={sorted(code - expected)} missing={sorted(expected - code)}")
-    if not {"META-INF/mozilla.rsa", "META-INF/cose.sig"} <= names:
-        sys.exit("archive is not signed")
-    for name in sorted(code):
-        with open(os.path.join(src, name), "rb") as f:
-            local = f.read()
-        packed = z.read(name)
-        if name == "manifest.json":
-            same = json.loads(packed) == json.loads(local)
-        else:
-            same = packed == local
-        if not same:
-            sys.exit(f"{name} differs from the source")
-PY
+# it is compared as normalized JSON; every other file must match byte for byte.
+# Nothing in the archive is executed here.
+src="$here/firefox-extension"
+listing=$(unzip -Z1 "$tmp") || die "the download is not a valid extension archive"
+packed=$(grep -v '/$' <<<"$listing" \
+  | grep -vxE 'META-INF/(manifest\.mf|mozilla\.sf|mozilla\.rsa|cose\.manifest|cose\.sig)' \
+  | sort || true)
+expected=$(find "$src" -mindepth 1 -maxdepth 1 -type f -printf '%f\n' | sort)
+[[ $packed == "$expected" ]] || die "the extension's files do not match the source in this checkout"
+grep -qx 'META-INF/mozilla.rsa' <<<"$listing" && grep -qx 'META-INF/cose.sig' <<<"$listing" \
+  || die "the extension archive is not signed"
+while IFS= read -r name; do
+  if [[ $name == manifest.json ]]; then
+    [[ $(unzip -p "$tmp" manifest.json | jq -cS .) == "$(jq -cS . "$src/manifest.json")" ]] \
+      || die "manifest.json differs from the source in this checkout"
+  else
+    unzip -p "$tmp" "$name" | cmp -s - "$src/$name" \
+      || die "$name differs from the source in this checkout"
+  fi
+done <<<"$expected"
 echo "    checksum and contents match this checkout"
 
 # The verified file is kept: Firefox reads it asynchronously after this script
